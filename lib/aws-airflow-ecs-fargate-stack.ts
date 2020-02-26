@@ -1,6 +1,10 @@
 import * as cdk from '@aws-cdk/core';
 import rds = require('@aws-cdk/aws-rds');
 import secretsmanager = require('@aws-cdk/aws-secretsmanager');
+import ec2 = require("@aws-cdk/aws-ec2");
+import ecs = require("@aws-cdk/aws-ecs");
+import ecs_patterns = require("@aws-cdk/aws-ecs-patterns");
+
 
 const CFG = {
   db: {
@@ -15,6 +19,9 @@ const CFG = {
     maxCapacity: 8,
     SecondsUntilAutoPause: 3600,
     subnetIds: ['subnet-0cc5bd19c2c1829aa', 'subnet-02b4e00939e9f33bc'] // list of pre-existing subnet IDs
+  },
+  ecs: {
+    vpcId: 'vpc-23d0fe58'
   }
 };
 
@@ -34,11 +41,13 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       }
     });
 
+    // Define the subnet group which our Aurora cluster will use: 
     const dbSubnetGroup = new rds.CfnDBSubnetGroup(this, 'DatabaseSubnetGroup', {
       dbSubnetGroupDescription: 'Subnet group for Airflow database',
       subnetIds: CFG.db.subnetIds
     });
 
+    // The Aurora database that our airflow service will use:
     const aurora = new rds.CfnDBCluster(this, 'AuroraServerless', {
       databaseName: CFG.db.databaseName,
       dbClusterIdentifier: CFG.db.dbClusterIdentifier,
@@ -56,6 +65,15 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       }
     });
 
+    // The vpc that our ECS Fargate tasks will use: 
+    const ecsVpc = ec2.Vpc.fromLookup(this, 'ecsVpc', {
+      vpcId: CFG.ecs.vpcId
+    }); 
+
+    // ECS cluster in which our Airflow cluster will run: 
+    const ecsCluster = new ecs.Cluster(this, "ecsCluster", {
+      vpc: ecsVpc
+    });
 
   }
 }

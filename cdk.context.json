@@ -1,4 +1,66 @@
 {
   "@aws-cdk/core:enableStackNameDuplicates": "true",
-  "aws-cdk:enableDiffNoFail": "true"
+  "aws-cdk:enableDiffNoFail": "true",
+  "vpc-provider:account=544941453660:filter.vpc-id=vpc-23d0fe58:region=us-east-1:returnAsymmetricSubnets=true": {
+    "vpcId": "vpc-23d0fe58",
+    "vpcCidrBlock": "172.16.0.0/16",
+    "availabilityZones": [],
+    "vpnGatewayId": "vgw-925dabfb",
+    "subnetGroups": [
+      {
+        "name": "Private",
+        "type": "Private",
+        "subnets": [
+          {
+            "subnetId": "subnet-0cc5bd19c2c1829aa",
+            "cidr": "172.16.203.0/24",
+            "availabilityZone": "us-east-1a",
+            "routeTableId": "rtb-03b8d63edf3dc81a8"
+          },
+          {
+            "subnetId": "subnet-014bb42f",
+            "cidr": "172.16.201.0/24",
+            "availabilityZone": "us-east-1b",
+            "routeTableId": "rtb-03b8d63edf3dc81a8"
+          },
+          {
+            "subnetId": "subnet-02b4e00939e9f33bc",
+            "cidr": "172.16.204.0/24",
+            "availabilityZone": "us-east-1c",
+            "routeTableId": "rtb-e011039c"
+          },
+          {
+            "subnetId": "subnet-d3c33e8f",
+            "cidr": "172.16.202.0/24",
+            "availabilityZone": "us-east-1d",
+            "routeTableId": "rtb-5e1c0e22"
+          },
+          {
+            "subnetId": "subnet-072f06a9eebc29338",
+            "cidr": "172.16.205.0/24",
+            "availabilityZone": "us-east-1e",
+            "routeTableId": "rtb-5e1c0e22"
+          }
+        ]
+      },
+      {
+        "name": "Public",
+        "type": "Public",
+        "subnets": [
+          {
+            "subnetId": "subnet-3749b619",
+            "cidr": "172.16.101.0/24",
+            "availabilityZone": "us-east-1b",
+            "routeTableId": "rtb-ab1b09d7"
+          },
+          {
+            "subnetId": "subnet-6732cf3b",
+            "cidr": "172.16.102.0/24",
+            "availabilityZone": "us-east-1d",
+            "routeTableId": "rtb-ab1b09d7"
+          }
+        ]
+      }
+    ]
+  }
 }
