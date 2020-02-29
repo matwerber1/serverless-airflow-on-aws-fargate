@@ -4,9 +4,8 @@ import secretsmanager = require('@aws-cdk/aws-secretsmanager');
 import ec2 = require("@aws-cdk/aws-ec2");
 import ecs = require("@aws-cdk/aws-ecs");
 import s3 = require("@aws-cdk/aws-s3");
-import { TaskDefinition } from '@aws-cdk/aws-ecs';
+import elbv2 = require('@aws-cdk/aws-elasticloadbalancingv2');
 import { DockerImageAsset } from '@aws-cdk/aws-ecr-assets';
-import { RemovalPolicy } from '@aws-cdk/core';
 var fs = require('fs');
 var path = require('path');
 
@@ -40,7 +39,7 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
 
     // S3 Bucket to which we will ship airflow logs: 
     const airflowLogBucket = new s3.Bucket(this, 'airflowLogBucket', {
-      removalPolicy: RemovalPolicy.DESTROY
+      removalPolicy: cdk.RemovalPolicy.DESTROY
     });
 
     var s3_log_path = "s3://" + airflowLogBucket.bucketName + "/logs"
@@ -84,11 +83,17 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       vpc: ecsVpc
     });
 
-    
+    //--------------------------------------------------------------------------
+    // AIRFLOW DOCKER IMAGE
+    //--------------------------------------------------------------------------
     const airflowImage = new DockerImageAsset(this, 'airflowImage', {
-      directory: path.join(__dirname, 'docker')
+      directory: path.join(__dirname, 'docker'),
+      repositoryName: 'airflow'
     });
     
+    //--------------------------------------------------------------------------
+    // TASK DEFINITIONS
+    //--------------------------------------------------------------------------
     const webserverTaskDefinition = new ecs.FargateTaskDefinition(this, 'webserverTaskDefinition', {
       family: 'airflow_webserver',
       cpu: 512,
@@ -199,6 +204,44 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       }
     })
       .addPortMappings({ containerPort: 6379 });;
+  
+    //--------------------------------------------------------------------------
+    // SERVICE DEFINITIONS
+    //--------------------------------------------------------------------------
+    /*
+    const webserverService = new ecs.FargateService(this, 'webserverService', {
+      cluster: ecsCluster,
+      taskDefinition: webserverTaskDefinition,
+      desiredCount: 1
+    });
+      
+    //--------------------------------------------------------------------------
+    // APPLICATION LOAD BALANCER
+    //--------------------------------------------------------------------------
+
+    const lb = new elbv2.ApplicationLoadBalancer(this, 'LB', {
+      vpc: ecsVpc,
+      internetFacing: false
+    });
+      
+    const listener = lb.addListener('Listener', {
+      port: 80,
+      open: true,
+    });
+
+    const webserverTargetGroup = new elbv2.ApplicationTargetGroup(this, 'webserverTargetGroup', {
+      port: 8080,
+      targetGroupName: 'airflow-webserver-tg',
+      targetType: elbv2.TargetType.IP,
+      vpc: ecsVpc,
+      protocol: elbv2.ApplicationProtocol.HTTP,
+      targets: [webserverService]
+    });
+      
+    listener.addTargetGroups('targetGroupAddition', {
+      targetGroups: [webserverTargetGroup]
+    });
+    */
     
   }
 }
