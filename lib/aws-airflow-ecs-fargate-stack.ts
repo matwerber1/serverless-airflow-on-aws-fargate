@@ -7,6 +7,7 @@ import s3 = require("@aws-cdk/aws-s3");
 import iam = require("@aws-cdk/aws-iam");
 import elbv2 = require('@aws-cdk/aws-elasticloadbalancingv2');
 import { DockerImageAsset } from '@aws-cdk/aws-ecr-assets';
+import servicediscovery = require('@aws-cdk/aws-servicediscovery');
 import { RotationSchedule } from '@aws-cdk/aws-secretsmanager';
 var fs = require('fs');
 var path = require('path');
@@ -34,6 +35,12 @@ const CFG = {
   ecs: {
     vpcId: 'vpc-23d0fe58',
     securityGroup: 'sg-00e88c6dc027cc7ce'
+  },
+  cloudmap: {
+    namespace: 'airflow',
+    redisServiceName: 'redis',
+    webserverServiceName: 'webserver',
+    flowerServiceName: 'flower'
   }
 };
 
@@ -56,8 +63,14 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
     //--------------------------------------------------------------------------
     // CDK RESOURCES
     //--------------------------------------------------------------------------
+    //TODO - add restrictions to avoid invalid chars
     const databasePasswordSecret = new secretsmanager.Secret(this, 'AirflowDatabasePassword', {
       secretName: "airflow/postgres/password"
+    });
+
+     //TODO - add restrictions to avoid invalid chars (redis failed to launch for certain chars)
+    const redisPasswordSecret = new secretsmanager.Secret(this, 'RedisPassword', {
+      secretName: "airflow/redis/password"
     });
 
     // S3 Bucket to which we will ship airflow logs: 
@@ -111,23 +124,39 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
     // TASK VARS
     //--------------------------------------------------------------------------
     
+    var redis_host = `${CFG.cloudmap.redisServiceName}.${CFG.cloudmap.namespace}`;  // e.g. private DNS = redis.airflow
+
     var taskEnvironmentVars = {
       POSTGRES_DB: CFG.db.databaseName,
       POSTGRES_HOST: aurora.attrEndpointAddress,
       POSTGRES_PORT: aurora.attrEndpointPort,
       POSTGRES_USER: CFG.db.masterUsername,
       AIRFLOW__CORE__REMOTE_BASE_LOG_FOLDER: s3_log_path,
-      REDIS_HOST: 'redis.airflow.celery',
+      REDIS_HOST: redis_host,
+      // Need to specify a key that is consistent across all airflow containers, otherwise they can't talk to one another: 
+      FERNET_KEY: 'CQInk_dg4xsDrB-s2pvAt81cbddUNffTXqnGoRlPb5c='    // This needs to be migrated to an automated, secure way of generating a key
     };
 
     var taskSecrets = {
-      POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(databasePasswordSecret)
+      POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(databasePasswordSecret),
+      REDIS_PASSWORD: ecs.Secret.fromSecretsManager(redisPasswordSecret)
     };
+
+    //--------------------------------------------------------------------------
+    // CLOUDMAP
+    //--------------------------------------------------------------------------
+
+    // We will use a private DNS zone to give friendly names to our airflow services
+    const airflowNamespace = new servicediscovery.PrivateDnsNamespace(this, 'airflowNamespace', {
+      name: CFG.cloudmap.namespace,
+      vpc: ecsVpc,
+      description: 'Private DNS for airflow resources'
+    });
 
     //--------------------------------------------------------------------------
     // TASK DEFINITION - WEBSERVER
     //--------------------------------------------------------------------------
-
+    /*
     const webserverTaskDefinition = new ecs.FargateTaskDefinition(this, 'webserverTaskDefinition', {
       family: 'airflow_webserver',
       cpu: 512,
@@ -149,13 +178,14 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       cluster: ecsCluster,
       taskDefinition: webserverTaskDefinition,
       desiredCount: 1,
-      securityGroup: ecsTaskSecurityGroup
+      securityGroup: ecsTaskSecurityGroup,
+      assignPublicIp: false
     });
-  
+    */
     //--------------------------------------------------------------------------
     // TASK DEFINITION - SCHEDULER
     //--------------------------------------------------------------------------
-    
+    /*
     const schedulerTaskDefinition = new ecs.FargateTaskDefinition(this, 'schedulerTaskDefinition', {
       family: 'airflow_scheduler',
       cpu: 512,
@@ -176,13 +206,14 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       cluster: ecsCluster,
       taskDefinition: schedulerTaskDefinition,
       desiredCount: 1,
-      securityGroup: ecsTaskSecurityGroup
+      securityGroup: ecsTaskSecurityGroup,
+      assignPublicIp: false
     });
-    
+    */
     //--------------------------------------------------------------------------
     // TASK DEFINITION - FLOWER
     //--------------------------------------------------------------------------
-    
+    /*
     const flowerTaskDefinition = new ecs.FargateTaskDefinition(this, 'flowerTaskDefinition', {
       family: 'airflow_flower',
       cpu: 256,
@@ -204,13 +235,14 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       cluster: ecsCluster,
       taskDefinition: flowerTaskDefinition,
       desiredCount: 0,
-      securityGroup: ecsTaskSecurityGroup
+      securityGroup: ecsTaskSecurityGroup,
+      assignPublicIp: false
     });
-
+    */
     //--------------------------------------------------------------------------
     // TASK DEFINITION - WORKER
     //--------------------------------------------------------------------------
-    
+    /*
     const workerTaskDefinition = new ecs.FargateTaskDefinition(this, 'workerTaskDefinition', {
       family: 'airflow_worker',
       cpu: 1024,
@@ -232,13 +264,14 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       cluster: ecsCluster,
       taskDefinition: workerTaskDefinition,
       desiredCount: 1,
-      securityGroup: ecsTaskSecurityGroup
+      securityGroup: ecsTaskSecurityGroup,
+      assignPublicIp: false
     });
-    
+    */
     //--------------------------------------------------------------------------
     // TASK DEFINITION - REDIS
     //--------------------------------------------------------------------------
-
+    
     const redisTaskDefinition = new ecs.FargateTaskDefinition(this, 'redisTaskDefinition', {
       family: 'airflow_redis',
       cpu: 1024,
@@ -247,25 +280,44 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
     });
 
     redisTaskDefinition.addContainer('DefaultContainer', {
-      image: ecs.ContainerImage.fromRegistry('docker.io/redis:5.0.5'),
+      image: ecs.ContainerImage.fromRegistry('bitnami/redis:5.0.7'),
       logging: new ecs.AwsLogDriver({ streamPrefix: "airflow-redis", logRetention: 365 }),
       environment: taskEnvironmentVars,
       secrets: taskSecrets
     })
       .addPortMappings({ containerPort: 6379 });;
-  
+    
     const redisService = new ecs.FargateService(this, 'redisService', {
       serviceName: 'redis',
       cluster: ecsCluster,
       taskDefinition: redisTaskDefinition,
       desiredCount: 1,
-      securityGroup: ecsTaskSecurityGroup
+      securityGroup: ecsTaskSecurityGroup,
+      assignPublicIp: false,
+      cloudMapOptions: {
+        name: CFG.cloudmap.redisServiceName,
+        cloudMapNamespace: airflowNamespace,
+        dnsRecordType: servicediscovery.DnsRecordType.A,
+        dnsTtl: cdk.Duration.seconds(30)
+      }
     });
-          
+    
+    //--------------------------------------------------------------------------
+    // Dependency Config
+    //--------------------------------------------------------------------------
+    // Based on guidance in: https://github.com/puckel/docker-airflow/blob/master/docker-compose-CeleryExecutor.yml
+    // We need to set up certain containers before others: 
+    //webserverService.node.addDependency(redisService);
+    //flowerService.node.addDependency(redisService);
+    //schedulerService.node.addDependency(webserverService);
+    //workerService.node.addDependency(schedulerService);
+
     //--------------------------------------------------------------------------
     // APPLICATION LOAD BALANCER - used for webserver and flower tasks
     //--------------------------------------------------------------------------
-    
+    /*
+    // DEPRECATING IN FAVOR OF CLOUDMAP
+
     const lb = new elbv2.ApplicationLoadBalancer(this, 'LB', {
       vpc: ecsVpc,
       internetFacing: false
@@ -309,6 +361,6 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       pathPattern: "/flower",
       priority: 2
     });
-    
+    */
   }
 }

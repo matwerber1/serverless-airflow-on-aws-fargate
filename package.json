@@ -31,7 +31,9 @@
     "@aws-cdk/aws-rds": "^1.26.0",
     "@aws-cdk/aws-s3": "^1.25.0",
     "@aws-cdk/aws-secretsmanager": "^1.25.0",
+    "@aws-cdk/aws-servicediscovery": "^1.26.0",
     "@aws-cdk/core": "^1.26.0",
+    "fernet": "^0.3.1",
     "source-map-support": "^0.5.16"
   }
 }
