@@ -17,9 +17,37 @@ I am brand new to Airflow. My first task is just to the containers running... af
 
 # Status
 
-1. Webserver task running and can connect via Fargate IP and ALB
-2. Scheduler task running, and webserver no longer says "no scheduler running", so I think scheduler-to-webserver communication is ok (?)
-3. Redis task running
+1. **Webserver** task running and can connect via Fargate IP and ALB
+2. **Scheduler** task running and working (the /health endpoint shows scheduler and metadata are `healthy`)
+3. **Redis** task running, not sure its properly configured... guessing I need to map it to a DNS name matching my env var config
+4. **Flower** - container dies, not sure why yet
+5. **Worker** - container dies with following error message in CloudWatch container logs: 
+
+  ```
+  [2020-03-01 20:44:06,502: CRITICAL/MainProcess] Unrecoverable error: ValueError("invalid literal for int() with base 10: 'k'")
+  Traceback (most recent call last):
+  File "/usr/local/lib/python3.7/site-packages/celery/worker/worker.py", line 205, in start
+    self.blueprint.start(self)
+  File "/usr/local/lib/python3.7/site-packages/celery/bootsteps.py", line 115, in start
+    self.on_start()
+  File "/usr/local/lib/python3.7/site-packages/celery/apps/worker.py", line 139, in on_start
+    self.emit_banner()
+  File "/usr/local/lib/python3.7/site-packages/celery/apps/worker.py", line 154, in emit_banner
+    ' \n', self.startup_info(artlines=not use_image))),
+  File "/usr/local/lib/python3.7/site-packages/celery/apps/worker.py", line 217, in startup_info
+    results=self.app.backend.as_uri(),
+  File "/usr/local/lib/python3.7/site-packages/celery/backends/base.py", line 138, in as_uri
+    url = maybe_sanitize_url(self.url or '')
+  File "/usr/local/lib/python3.7/site-packages/kombu/utils/url.py", line 121, in maybe_sanitize_url
+    return sanitize_url(url, mask)
+  File "/usr/local/lib/python3.7/site-packages/kombu/utils/url.py", line 114, in sanitize_url
+    return as_url(*_parse_url(url), sanitize=True, mask=mask)
+  File "/usr/local/lib/python3.7/site-packages/kombu/utils/url.py", line 81, in url_to_parts
+    parts.port,
+  File "/usr/local/lib/python3.7/urllib/parse.py", line 169, in port
+    port = int(port, 10)
+  ValueError: invalid literal for int() with base 10: 'k'
+  ```
 
 
 
