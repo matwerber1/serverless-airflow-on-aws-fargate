@@ -11,6 +11,10 @@ https://towardsdatascience.com/how-to-deploy-apache-airflow-with-celery-on-aws-c
 
 I don't have everything working yet...
 
+# Help wanted
+
+I am brand new to Airflow. My first task is just to the containers running... after that, I need to learn how to configure Airflow and get the container tasks talking to one another. Help is welcome :)
+
 # Status
 
 1. Webserver task running and can connect via Fargate IP and ALB
