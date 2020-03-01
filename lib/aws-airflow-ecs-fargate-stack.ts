@@ -108,6 +108,23 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
     });
     
     //--------------------------------------------------------------------------
+    // TASK VARS
+    //--------------------------------------------------------------------------
+    
+    var taskEnvironmentVars = {
+      POSTGRES_DB: CFG.db.databaseName,
+      POSTGRES_HOST: aurora.attrEndpointAddress,
+      POSTGRES_PORT: aurora.attrEndpointPort,
+      POSTGRES_USER: CFG.db.masterUsername,
+      AIRFLOW__CORE__REMOTE_BASE_LOG_FOLDER: s3_log_path,
+      REDIS_HOST: 'redis.airflow.celery',
+    };
+
+    var taskSecrets = {
+      POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(databasePasswordSecret)
+    };
+
+    //--------------------------------------------------------------------------
     // TASK DEFINITION - WEBSERVER
     //--------------------------------------------------------------------------
 
@@ -122,16 +139,8 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       image: ecs.ContainerImage.fromRegistry(airflowImage.imageUri),
       command: ['webserver'],
       logging: new ecs.AwsLogDriver({ streamPrefix: "airflow-webserver", logRetention: 365 }),
-      environment: {
-        POSTGRES_DB: CFG.db.databaseName, 
-        POSTGRES_HOST: aurora.attrEndpointAddress,
-        POSTGRES_PORT: aurora.attrEndpointPort,
-        POSTGRES_USER: CFG.db.masterUsername,
-        AIRFLOW__CORE__REMOTE_BASE_LOG_FOLDER: s3_log_path
-      },
-      secrets: {
-        POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(databasePasswordSecret)
-      }
+      environment: taskEnvironmentVars,
+      secrets: taskSecrets
     })
       .addPortMappings({ containerPort: 8080 });
     
@@ -158,17 +167,8 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       image: ecs.ContainerImage.fromRegistry(airflowImage.imageUri),
       command: ['scheduler'],
       logging: new ecs.AwsLogDriver({ streamPrefix: "airflow-scheduler", logRetention: 365 }),
-      environment: {
-        POSTGRES_DB: CFG.db.databaseName, 
-        POSTGRES_HOST: aurora.attrEndpointAddress,
-        POSTGRES_PORT: aurora.attrEndpointPort,
-        POSTGRES_USER: CFG.db.masterUsername,
-        REDIS_HOST: 'redis.airflow.celery',
-        AIRFLOW__CORE__REMOTE_BASE_LOG_FOLDER: s3_log_path
-      },
-      secrets: {
-        POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(databasePasswordSecret)
-      }
+      environment: taskEnvironmentVars,
+      secrets: taskSecrets
     });
 
     const schedulerService = new ecs.FargateService(this, 'schedulerService', {
@@ -194,16 +194,8 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       image: ecs.ContainerImage.fromRegistry(airflowImage.imageUri),
       command: ['flower'],
       logging: new ecs.AwsLogDriver({ streamPrefix: "airflow-flower", logRetention: 365 }),
-      environment: {
-        POSTGRES_DB: CFG.db.databaseName, 
-        POSTGRES_HOST: aurora.attrEndpointAddress,
-        POSTGRES_PORT: aurora.attrEndpointPort,
-        POSTGRES_USER: CFG.db.masterUsername,
-        AIRFLOW__CORE__REMOTE_BASE_LOG_FOLDER: s3_log_path
-      },
-      secrets: {
-        POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(databasePasswordSecret)
-      }
+      environment: taskEnvironmentVars,
+      secrets: taskSecrets
     })
     .addPortMappings({ containerPort: 5555 });;
 
@@ -218,7 +210,7 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
     //--------------------------------------------------------------------------
     // TASK DEFINITION - WORKER
     //--------------------------------------------------------------------------
-    /*
+    
     const workerTaskDefinition = new ecs.FargateTaskDefinition(this, 'workerTaskDefinition', {
       family: 'airflow_worker',
       cpu: 1024,
@@ -230,17 +222,8 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       image: ecs.ContainerImage.fromRegistry(airflowImage.imageUri),
       command: ['worker'],
       logging: new ecs.AwsLogDriver({ streamPrefix: "airflow-worker", logRetention: 365 }),
-      environment: {
-        POSTGRES_DB: CFG.db.databaseName, 
-        POSTGRES_HOST: aurora.attrEndpointAddress,
-        POSTGRES_PORT: aurora.attrEndpointPort,
-        POSTGRES_USER: CFG.db.masterUsername,
-        REDIS_HOST: 'redis.airflow.celery',
-        AIRFLOW__CORE__REMOTE_BASE_LOG_FOLDER: s3_log_path
-      },
-      secrets: {
-        POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(databasePasswordSecret)
-      }
+      environment: taskEnvironmentVars,
+      secrets: taskSecrets
     })
     .addPortMappings({ containerPort: 8793 });;
     
@@ -251,7 +234,7 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       desiredCount: 1,
       securityGroup: ecsTaskSecurityGroup
     });
-    */
+    
     //--------------------------------------------------------------------------
     // TASK DEFINITION - REDIS
     //--------------------------------------------------------------------------
@@ -266,16 +249,8 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
     redisTaskDefinition.addContainer('DefaultContainer', {
       image: ecs.ContainerImage.fromRegistry('docker.io/redis:5.0.5'),
       logging: new ecs.AwsLogDriver({ streamPrefix: "airflow-redis", logRetention: 365 }),
-      environment: {
-        POSTGRES_DB: CFG.db.databaseName, 
-        POSTGRES_HOST: aurora.attrEndpointAddress,
-        POSTGRES_PORT: aurora.attrEndpointPort,
-        POSTGRES_USER: CFG.db.masterUsername,
-        AIRFLOW__CORE__REMOTE_BASE_LOG_FOLDER: s3_log_path
-      },
-      secrets: {
-        POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(databasePasswordSecret)
-      }
+      environment: taskEnvironmentVars,
+      secrets: taskSecrets
     })
       .addPortMappings({ containerPort: 6379 });;
   
