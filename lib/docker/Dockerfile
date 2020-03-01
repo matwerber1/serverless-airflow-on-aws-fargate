@@ -6,6 +6,8 @@ COPY airflow.cfg ./airflow.cfg
 COPY /dags ./dags
 
 COPY entrypoint.sh /entrypoint.sh
+
+# For python dependencies
 COPY requirements.txt /requirements.txt
 
 # Add directory in which pip installs to PATH

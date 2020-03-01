@@ -27,6 +27,7 @@
     "@aws-cdk/aws-ecs": "^1.25.0",
     "@aws-cdk/aws-ecs-patterns": "^1.25.0",
     "@aws-cdk/aws-elasticloadbalancingv2": "^1.26.0",
+    "@aws-cdk/aws-iam": "^1.26.0",
     "@aws-cdk/aws-rds": "^1.26.0",
     "@aws-cdk/aws-s3": "^1.25.0",
     "@aws-cdk/aws-secretsmanager": "^1.25.0",

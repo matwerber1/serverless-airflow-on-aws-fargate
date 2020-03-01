@@ -1,8 +1,17 @@
-# Welcome to your CDK TypeScript project!
+# Apache Airflow on AWS ECS (Fargate) and Aurora Postgres
 
-This is a blank project for TypeScript development with CDK.
+This project provides a CDK script to get you up and running with Apache Airflow.
 
-The `cdk.json` file tells the CDK Toolkit how to execute your app.
+The majority of the infrastructure runs in Fargate containers on Amazon ECS. Amazon Aurora for Postgres provides persistent storage. 
+
+This project was almost entirely based on the awesome article by Axel Furlan, below: 
+https://towardsdatascience.com/how-to-deploy-apache-airflow-with-celery-on-aws-ce2518dbf631
+
+# Work in process!
+
+I don't have everything working yet...
+
+1. Got the `webserver` task up and running, and I can see that it has connected to and populated data within the Aurora PG database...
 
 ## Useful commands
 
