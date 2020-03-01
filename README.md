@@ -11,7 +11,13 @@ https://towardsdatascience.com/how-to-deploy-apache-airflow-with-celery-on-aws-c
 
 I don't have everything working yet...
 
-1. Got the `webserver` task up and running, and I can see that it has connected to and populated data within the Aurora PG database...
+# Status
+
+1. Webserver task running and can connect via Fargate IP and ALB
+2. Scheduler task running, and webserver no longer says "no scheduler running", so I think scheduler-to-webserver communication is ok (?)
+3. Redis task running
+
+
 
 ## Useful commands
 
