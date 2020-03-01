@@ -191,7 +191,7 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
     //--------------------------------------------------------------------------
     // TASK DEFINITION - SCHEDULER
     //--------------------------------------------------------------------------
-    /*
+    
     const schedulerTaskDefinition = new ecs.FargateTaskDefinition(this, 'schedulerTaskDefinition', {
       family: 'airflow_scheduler',
       cpu: 512,
@@ -206,7 +206,7 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       environment: taskEnvironmentVars,
       secrets: taskSecrets
     });
-
+    
     const schedulerService = new ecs.FargateService(this, 'schedulerService', {
       serviceName: 'scheduler',
       cluster: ecsCluster,
@@ -215,7 +215,7 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       securityGroup: ecsTaskSecurityGroup,
       assignPublicIp: false
     });
-    */
+    
     //--------------------------------------------------------------------------
     // TASK DEFINITION - FLOWER
     //--------------------------------------------------------------------------
