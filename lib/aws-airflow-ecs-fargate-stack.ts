@@ -156,7 +156,7 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
     //--------------------------------------------------------------------------
     // TASK DEFINITION - WEBSERVER
     //--------------------------------------------------------------------------
-    /*
+    
     const webserverTaskDefinition = new ecs.FargateTaskDefinition(this, 'webserverTaskDefinition', {
       family: 'airflow_webserver',
       cpu: 512,
@@ -179,9 +179,15 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       taskDefinition: webserverTaskDefinition,
       desiredCount: 1,
       securityGroup: ecsTaskSecurityGroup,
-      assignPublicIp: false
+      assignPublicIp: false,
+      cloudMapOptions: {
+        name: CFG.cloudmap.webserverServiceName,
+        cloudMapNamespace: airflowNamespace,
+        dnsRecordType: servicediscovery.DnsRecordType.A,
+        dnsTtl: cdk.Duration.seconds(30)
+      }
     });
-    */
+
     //--------------------------------------------------------------------------
     // TASK DEFINITION - SCHEDULER
     //--------------------------------------------------------------------------
@@ -236,7 +242,13 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       taskDefinition: flowerTaskDefinition,
       desiredCount: 0,
       securityGroup: ecsTaskSecurityGroup,
-      assignPublicIp: false
+      assignPublicIp: false,
+      cloudMapOptions: {
+        name: CFG.cloudmap.flowerServiceName,
+        cloudMapNamespace: airflowNamespace,
+        dnsRecordType: servicediscovery.DnsRecordType.A,
+        dnsTtl: cdk.Duration.seconds(30)
+      }
     });
     */
     //--------------------------------------------------------------------------
@@ -307,7 +319,7 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
     //--------------------------------------------------------------------------
     // Based on guidance in: https://github.com/puckel/docker-airflow/blob/master/docker-compose-CeleryExecutor.yml
     // We need to set up certain containers before others: 
-    //webserverService.node.addDependency(redisService);
+    webserverService.node.addDependency(redisService);
     //flowerService.node.addDependency(redisService);
     //schedulerService.node.addDependency(webserverService);
     //workerService.node.addDependency(schedulerService);
