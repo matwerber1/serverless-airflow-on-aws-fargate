@@ -44,27 +44,19 @@ const CFG = {
   },
   redis: {
     port: '6379'
+  },
+  airflow: {
+    fernetKey: 'CQInk_dg4xsDrB-s2pvAt81cbddUNffTXqnGoRlPb5c=',   // need to replace this with a randomly-generated key somehow...
+    loadExamples: 'n'
   }
-};
+};  
 
 export class AwsAirflowEcsFargateStack extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
     //--------------------------------------------------------------------------
-    // EXTERNAL RESOURCES
-    //   These are pre-existing resources created outside of this CDK stack:
-    //--------------------------------------------------------------------------
-    
-    const ecsVpc = ec2.Vpc.fromLookup(this, 'ecsVpc', { vpcId: CFG.ecs.vpcId }); 
-    
-    const ecsTaskSecurityGroup = ec2.SecurityGroup.fromSecurityGroupId(this, 'taskSecurityGroup', CFG.ecs.securityGroup);
-    
-    var taskExecutionRoleArn = `arn:aws:iam::${props?.env?.account}:role/ecsTaskExecutionRole`;
-    const taskExecutionRole = iam.Role.fromRoleArn(this, 'taskExecutionRole', taskExecutionRoleArn);
-
-    //--------------------------------------------------------------------------
-    // CDK RESOURCES
+    // SECRETS
     //--------------------------------------------------------------------------
     //TODO - add restrictions to avoid invalid chars
     const databasePasswordSecret = new secretsmanager.Secret(this, 'AirflowDatabasePassword', {
@@ -76,13 +68,20 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       secretName: "airflow/redis/password"
     });
 
+    //--------------------------------------------------------------------------
+    // AIRFLOW S3 BUCKET (for logging and storing DAGs)
+    //--------------------------------------------------------------------------
     // S3 Bucket to which we will ship airflow logs: 
-    const airflowLogBucket = new s3.Bucket(this, 'airflowLogBucket', {
+    const airflowBucket = new s3.Bucket(this, 'airflowBucket', {
       removalPolicy: cdk.RemovalPolicy.DESTROY
     });
+    var s3_log_path = "s3://" + airflowBucket.bucketName + "/logs"
 
-    var s3_log_path = "s3://" + airflowLogBucket.bucketName + "/logs"
-
+    //--------------------------------------------------------------------------
+    // VPC, NETWORKING
+    //--------------------------------------------------------------------------
+    const ecsVpc = ec2.Vpc.fromLookup(this, 'ecsVpc', { vpcId: CFG.ecs.vpcId }); 
+    
     // Define the subnet group which our Aurora cluster will use: 
     const dbSubnetGroup = new rds.CfnDBSubnetGroup(this, 'DatabaseSubnetGroup', {
       dbSubnetGroupDescription: 'Subnet group for Airflow database',
@@ -90,7 +89,16 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       subnetIds: CFG.db.subnetIds
     });
     
-    // The Aurora database that our airflow service will use:
+    //--------------------------------------------------------------------------
+    // IAM & SECURITY GROUPS
+    //--------------------------------------------------------------------------
+    const taskExecutionRoleArn = `arn:aws:iam::${props?.env?.account}:role/ecsTaskExecutionRole`;
+    const taskExecutionRole = iam.Role.fromRoleArn(this, 'taskExecutionRole', taskExecutionRoleArn);
+    const ecsTaskSecurityGroup = ec2.SecurityGroup.fromSecurityGroupId(this, 'taskSecurityGroup', CFG.ecs.securityGroup);
+    
+    //--------------------------------------------------------------------------
+    // AIRFLOW POSTGRES DATABASE (AURORA SERVERLESS)
+    //--------------------------------------------------------------------------
     const aurora = new rds.CfnDBCluster(this, 'AuroraAirflow', {
       databaseName: CFG.db.databaseName,
       dbClusterIdentifier: CFG.db.dbClusterIdentifier,
@@ -105,51 +113,32 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
         autoPause: CFG.db.autoPause,
         maxCapacity: CFG.db.maxCapacity,
         minCapacity: CFG.db.minCapacity,
-        //secondsUntilAutoPause: CFG.db.secondsUntilAutoPause
       }
-    });
-
-    // ECS cluster in which our Airflow cluster will run: 
-    const ecsCluster = new ecs.Cluster(this, "ecsCluster", {
-      vpc: ecsVpc
     });
 
     //--------------------------------------------------------------------------
     // AIRFLOW DOCKER IMAGE
     //--------------------------------------------------------------------------
-    // This will build the contents of the local docker/Dockerfile and upload to ECR: 
     const airflowImage = new DockerImageAsset(this, 'airflowImage', {
       directory: path.join(__dirname, 'docker'),
       repositoryName: 'airflow'
     });
     
     //--------------------------------------------------------------------------
-    // TASK VARS
+    // AIRFLOW ECS CLUSTER
     //--------------------------------------------------------------------------
-    
-    var redis_host = `${CFG.cloudmap.redisServiceName}.${CFG.cloudmap.namespace}`;  // e.g. private DNS = redis.airflow
-
-    var taskEnvironmentVars = {
-      POSTGRES_DB: CFG.db.databaseName,
-      POSTGRES_HOST: aurora.attrEndpointAddress,
-      POSTGRES_PORT: aurora.attrEndpointPort,
-      POSTGRES_USER: CFG.db.masterUsername,
-      AIRFLOW__CORE__REMOTE_BASE_LOG_FOLDER: s3_log_path,
-      REDIS_HOST: redis_host,
-      REDIS_PORT: CFG.redis.port, 
-      // Need to specify a key that is consistent across all airflow containers, otherwise they can't talk to one another: 
-      FERNET_KEY: 'CQInk_dg4xsDrB-s2pvAt81cbddUNffTXqnGoRlPb5c='    // This needs to be migrated to an automated, secure way of generating a key
-    };
-
-    var taskSecrets = {
-      POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(databasePasswordSecret),
-      REDIS_PASSWORD: ecs.Secret.fromSecretsManager(redisPasswordSecret)
-    };
+    const ecsCluster = new ecs.Cluster(this, "ecsCluster", {
+      vpc: ecsVpc
+    });
 
     //--------------------------------------------------------------------------
-    // CLOUDMAP
+    // REDIS HOST
     //--------------------------------------------------------------------------
+    const redisHost = `${CFG.cloudmap.redisServiceName}.${CFG.cloudmap.namespace}`;  // e.g. private DNS = redis.airflow
 
+    //--------------------------------------------------------------------------
+    // AIRFLOW PRIVATE DNS ENTRIES via AWS CLOUD MAP
+    //--------------------------------------------------------------------------
     // We will use a private DNS zone to give friendly names to our airflow services
     const airflowNamespace = new servicediscovery.PrivateDnsNamespace(this, 'airflowNamespace', {
       name: CFG.cloudmap.namespace,
@@ -158,9 +147,8 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
     });
 
     //--------------------------------------------------------------------------
-    // TASK DEFINITION - WEBSERVER
+    // ECS SERVICE - AIRFLOW WEBSERVER
     //--------------------------------------------------------------------------
-    
     const webserverTaskDefinition = new ecs.FargateTaskDefinition(this, 'webserverTaskDefinition', {
       family: 'airflow_webserver',
       cpu: 512,
@@ -172,8 +160,22 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       image: ecs.ContainerImage.fromRegistry(airflowImage.imageUri),
       command: ['webserver'],
       logging: new ecs.AwsLogDriver({ streamPrefix: "airflow-webserver", logRetention: 365 }),
-      environment: taskEnvironmentVars,
-      secrets: taskSecrets
+      environment: {
+        // Need to specify a key that is consistent across all airflow containers, otherwise they can't talk to one another: 
+        FERNET_KEY: CFG.airflow.fernetKey,    // This needs to be migrated to an automated, secure way of generating a key
+        LOAD_EX: CFG.airflow.loadExamples,
+        POSTGRES_DB: CFG.db.databaseName,
+        POSTGRES_HOST: aurora.attrEndpointAddress,
+        POSTGRES_PORT: aurora.attrEndpointPort,
+        POSTGRES_USER: CFG.db.masterUsername,
+        AIRFLOW__CORE__REMOTE_BASE_LOG_FOLDER: s3_log_path,
+        REDIS_HOST: redisHost,
+        REDIS_PORT: CFG.redis.port
+      },
+      secrets: {
+        POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(databasePasswordSecret),
+        REDIS_PASSWORD: ecs.Secret.fromSecretsManager(redisPasswordSecret)
+      }
     })
       .addPortMappings({ containerPort: 8080 });
     
@@ -193,9 +195,8 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
     });
 
     //--------------------------------------------------------------------------
-    // TASK DEFINITION - SCHEDULER
+    // ECS SERVICE - AIRFLOW SCHEDULER
     //--------------------------------------------------------------------------
-    
     const schedulerTaskDefinition = new ecs.FargateTaskDefinition(this, 'schedulerTaskDefinition', {
       family: 'airflow_scheduler',
       cpu: 512,
@@ -207,8 +208,22 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       image: ecs.ContainerImage.fromRegistry(airflowImage.imageUri),
       command: ['scheduler'],
       logging: new ecs.AwsLogDriver({ streamPrefix: "airflow-scheduler", logRetention: 365 }),
-      environment: taskEnvironmentVars,
-      secrets: taskSecrets
+      environment: {
+        // Need to specify a key that is consistent across all airflow containers, otherwise they can't talk to one another: 
+        FERNET_KEY: CFG.airflow.fernetKey,    // This needs to be migrated to an automated, secure way of generating a key
+        LOAD_EX: CFG.airflow.loadExamples,
+        POSTGRES_DB: CFG.db.databaseName,
+        POSTGRES_HOST: aurora.attrEndpointAddress,
+        POSTGRES_PORT: aurora.attrEndpointPort,
+        POSTGRES_USER: CFG.db.masterUsername,
+        AIRFLOW__CORE__REMOTE_BASE_LOG_FOLDER: s3_log_path,
+        REDIS_HOST: redisHost,
+        REDIS_PORT: CFG.redis.port
+      },
+      secrets: {
+        POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(databasePasswordSecret),
+        REDIS_PASSWORD: ecs.Secret.fromSecretsManager(redisPasswordSecret)
+      }
     });
     
     const schedulerService = new ecs.FargateService(this, 'schedulerService', {
@@ -221,9 +236,8 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
     });
     
     //--------------------------------------------------------------------------
-    // TASK DEFINITION - FLOWER
+    // ECS SERVICE - AIRFLOW FLOWER
     //--------------------------------------------------------------------------
-    /*
     const flowerTaskDefinition = new ecs.FargateTaskDefinition(this, 'flowerTaskDefinition', {
       family: 'airflow_flower',
       cpu: 256,
@@ -235,8 +249,20 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       image: ecs.ContainerImage.fromRegistry(airflowImage.imageUri),
       command: ['flower'],
       logging: new ecs.AwsLogDriver({ streamPrefix: "airflow-flower", logRetention: 365 }),
-      environment: taskEnvironmentVars,
-      secrets: taskSecrets
+      environment: {
+        // Need to specify a key that is consistent across all airflow containers, otherwise they can't talk to one another: 
+        POSTGRES_DB: CFG.db.databaseName,
+        POSTGRES_HOST: aurora.attrEndpointAddress,
+        POSTGRES_PORT: aurora.attrEndpointPort,
+        POSTGRES_USER: CFG.db.masterUsername,
+        AIRFLOW__CORE__REMOTE_BASE_LOG_FOLDER: s3_log_path,
+        REDIS_HOST: redisHost,
+        REDIS_PORT: CFG.redis.port
+      },
+      secrets: {
+        POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(databasePasswordSecret),
+        REDIS_PASSWORD: ecs.Secret.fromSecretsManager(redisPasswordSecret)
+      }
     })
     .addPortMappings({ containerPort: 5555 });;
 
@@ -244,7 +270,7 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       serviceName: 'flower',
       cluster: ecsCluster,
       taskDefinition: flowerTaskDefinition,
-      desiredCount: 0,
+      desiredCount: 1,
       securityGroup: ecsTaskSecurityGroup,
       assignPublicIp: false,
       cloudMapOptions: {
@@ -254,11 +280,10 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
         dnsTtl: cdk.Duration.seconds(30)
       }
     });
-    */
-    //--------------------------------------------------------------------------
-    // TASK DEFINITION - WORKER
-    //--------------------------------------------------------------------------
     
+    //--------------------------------------------------------------------------
+    // ECS SERVICE - AIRFLOW WORKER
+    //--------------------------------------------------------------------------
     const workerTaskDefinition = new ecs.FargateTaskDefinition(this, 'workerTaskDefinition', {
       family: 'airflow_worker',
       cpu: 1024,
@@ -271,24 +296,23 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       command: ['worker'],
       logging: new ecs.AwsLogDriver({ streamPrefix: "airflow-worker", logRetention: 365 }),
       environment: {
+        // Need to specify a key that is consistent across all airflow containers, otherwise they can't talk to one another: 
+        FERNET_KEY: CFG.airflow.fernetKey,    // This needs to be migrated to an automated, secure way of generating a key
         POSTGRES_DB: CFG.db.databaseName,
         POSTGRES_HOST: aurora.attrEndpointAddress,
         POSTGRES_PORT: aurora.attrEndpointPort,
         POSTGRES_USER: CFG.db.masterUsername,
         AIRFLOW__CORE__REMOTE_BASE_LOG_FOLDER: s3_log_path,
-        REDIS_HOST: redis_host,
-        REDIS_PORT: CFG.redis.port, 
-        ALLOW_EMPTY_PASSWORD: 'yes',
-        // Need to specify a key that is consistent across all airflow containers, otherwise they can't talk to one another: 
-        FERNET_KEY: 'CQInk_dg4xsDrB-s2pvAt81cbddUNffTXqnGoRlPb5c='    // This needs to be migrated to an automated, secure way of generating a key
+        REDIS_HOST: redisHost,
+        REDIS_PORT: CFG.redis.port
       },
       secrets: {
         POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(databasePasswordSecret),
-        //REDIS_PASSWORD: ecs.Secret.fromSecretsManager(redisPasswordSecret)
+        REDIS_PASSWORD: ecs.Secret.fromSecretsManager(redisPasswordSecret)
       }
     })
     .addPortMappings({ containerPort: 8793 });;
-  
+    
     const workerService = new ecs.FargateService(this, 'workerService', {
       serviceName: 'worker',
       cluster: ecsCluster,
@@ -297,11 +321,10 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       securityGroup: ecsTaskSecurityGroup,
       assignPublicIp: false
     });
-
-    //--------------------------------------------------------------------------
-    // TASK DEFINITION - REDIS
-    //--------------------------------------------------------------------------
     
+    //--------------------------------------------------------------------------
+    // ECS SERVICE - REDIS (USED BY AIRFLOW)
+    //--------------------------------------------------------------------------
     const redisTaskDefinition = new ecs.FargateTaskDefinition(this, 'redisTaskDefinition', {
       family: 'airflow_redis',
       cpu: 1024,
@@ -313,19 +336,10 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       image: ecs.ContainerImage.fromRegistry('bitnami/redis:5.0.7'),
       logging: new ecs.AwsLogDriver({ streamPrefix: "airflow-redis", logRetention: 365 }),
       environment: {
-        POSTGRES_DB: CFG.db.databaseName,
-        POSTGRES_HOST: aurora.attrEndpointAddress,
-        POSTGRES_PORT: aurora.attrEndpointPort,
-        POSTGRES_USER: CFG.db.masterUsername,
-        AIRFLOW__CORE__REMOTE_BASE_LOG_FOLDER: s3_log_path,
-        REDIS_HOST: redis_host,
-        REDIS_PORT: CFG.redis.port, 
-        // Need to specify a key that is consistent across all airflow containers, otherwise they can't talk to one another: 
-        FERNET_KEY: 'CQInk_dg4xsDrB-s2pvAt81cbddUNffTXqnGoRlPb5c='    // This needs to be migrated to an automated, secure way of generating a key
+        //ALLOW_EMPTY_PASSWORD: 'yes',    // used by Redis
       },
       secrets: {
-        POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(databasePasswordSecret),
-        //REDIS_PASSWORD: ecs.Secret.fromSecretsManager(redisPasswordSecret)
+        REDIS_PASSWORD: ecs.Secret.fromSecretsManager(redisPasswordSecret)
       }
     })
       .addPortMappings({ containerPort: 6379 });;
@@ -345,65 +359,5 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       }
     });
     
-    //--------------------------------------------------------------------------
-    // Dependency Config
-    //--------------------------------------------------------------------------
-    // Based on guidance in: https://github.com/puckel/docker-airflow/blob/master/docker-compose-CeleryExecutor.yml
-    // We need to set up certain containers before others: 
-    //webserverService.node.addDependency(redisService);
-    //flowerService.node.addDependency(redisService);
-    //schedulerService.node.addDependency(webserverService);
-    //workerService.node.addDependency(schedulerService);
-
-    //--------------------------------------------------------------------------
-    // APPLICATION LOAD BALANCER - used for webserver and flower tasks
-    //--------------------------------------------------------------------------
-    /*
-    // DEPRECATING IN FAVOR OF CLOUDMAP
-
-    const lb = new elbv2.ApplicationLoadBalancer(this, 'LB', {
-      vpc: ecsVpc,
-      internetFacing: false
-    });
-      
-    const listener = lb.addListener('Listener', {
-      port: 80,
-      open: true,
-    });
-
-    const webserverTargetGroup = new elbv2.ApplicationTargetGroup(this, 'webserverTargetGroup', {
-      port: 8080,
-      targetGroupName: 'airflow-webserver-tg',
-      targetType: elbv2.TargetType.IP,
-      vpc: ecsVpc,
-      protocol: elbv2.ApplicationProtocol.HTTP,
-      targets: [webserverService],
-      healthCheck: {
-        healthyHttpCodes: '200,302'   // Because the webserver does a redirect, we add code 302 as an acceptable code
-      }
-    });
-
-    const flowerTargetGroup = new elbv2.ApplicationTargetGroup(this, 'flowerTargetGroup', {
-      port: 5555,
-      targetGroupName: 'airflow-flower-tg',
-      targetType: elbv2.TargetType.IP,
-      vpc: ecsVpc,
-      protocol: elbv2.ApplicationProtocol.HTTP,
-      targets: [flowerService],
-      healthCheck: {
-        healthyHttpCodes: '200,302'   // Because the webserver does a redirect, we add code 302 as an acceptable code
-      }
-    });
-      
-    listener.addTargetGroups('defaultRule', {
-      targetGroups: [webserverTargetGroup],
-    });
-
-    listener.addTargetGroups('flowerRule', {
-      targetGroups: [flowerTargetGroup],
-      pathPattern: "/flower",
-      priority: 2
-    });
-    */
   }
 }
