@@ -7,19 +7,33 @@ The majority of the infrastructure runs in Fargate containers on Amazon ECS. Ama
 This project was almost entirely based on the awesome article by Axel Furlan, below: 
 https://towardsdatascience.com/how-to-deploy-apache-airflow-with-celery-on-aws-ce2518dbf631
 
-# Work in process!
+## Work in process
 
 I don't have everything working yet...
 
-# Disclaimer!
+## Disclaimer
 
 I'm new to Airflow and this project is a learning experience.
 
 My current goal is "just get it working", so production considerations (security, scaling, best practices, etc.) have not been addressed.
 
-# Status
+## Status
 
 Just got everything finally working. I ran a DAG and it was successfully passed to and executed by the worker container :)
+
+## Architecture
+
+1. This project runs the key components (webserver, scheduler, worker, and flower) of Apache Airflow, as well as an instance of Redis, as docker containers on AWS. Each container running as a separate Amazon ECS task with AWS Fargate.
+
+2. Amazon ECS is a container orchestration service, and AWS Fargate allows you to run your Docker containers serverlessly (sort of like a long-running AWS Lambda function).
+
+3. Persistent storage for Apache Airflow is provided by an instance of Amazon Aurora Serverless for Postgres. 
+
+4. The containers within the `webserver` and `flower` ECS services are automatically mapped to the DNS entries `webserver.airflow` and `flower.airflow`, respectively, within a Route 53 private hosted zone named `airflow`. Their web UIs may be accessed from within your VPC by http://webserver.airflow:8080 and http://flower.airflow:5555, respectively.
+
+5. The Aurora Postgres and Redis passwords are randomly generated and stored as secrets within AWS Secrets Manager.
+
+6. An Amazon S3 bucket is created to store logs from the airflow containers (and eventually, DAGs uploaded to this bucket willl be synced via a cron task into our airflow containers).
 
 ## TODO List
 
@@ -33,9 +47,9 @@ Just got everything finally working. I ran a DAG and it was successfully passed 
 7. Add an auto-scaling mechanism for the webserver task (maybe for large deployments)
 8. Maybe use AWS ElastiCache for Redis, instead of a Redis container on Fargate (not sure if needed)
 
-# Known Issues
+## Known Issues
 
-## Bad Characters in Postgres Password
+### Bad Characters in Postgres Password
 
 I used AWS Secrets Manager's `new secretsManager.Secret()` to generate a random string for the Postgres and Redis passwords. 
 
