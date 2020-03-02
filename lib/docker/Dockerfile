@@ -13,6 +13,14 @@ COPY requirements.txt /requirements.txt
 # Add directory in which pip installs to PATH
 ENV PATH="/usr/local/airflow/.local/bin:${PATH}"
 
+# Install Git for airflow-code-editor:
+RUN apt update      
+RUN apt install -y git
+
+# Grant read/write on ./dags to all users so that airflow user can use airflow-code-editor:
+# Note - this can probably be scoped down for better security:
+RUN chmod -R a+rw ./dags
+
 USER airflow
 
 ENTRYPOINT ["/entrypoint.sh"]

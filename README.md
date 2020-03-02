@@ -53,6 +53,14 @@ This project uses the AWS Cloud Development Kit (AWS CDK). Steps to deploy are:
 7. Add an auto-scaling mechanism for the webserver task (maybe for large deployments)
 8. Maybe use AWS ElastiCache for Redis, instead of a Redis container on Fargate (not sure if needed)
 
+## Other Topics
+
+### Web UI to edit DAGs
+
+Just to make my early learning a bit easier, I included an [airflow-code-editor](https://github.com/andreax79/airflow-code-editor) plugin, which gives a web UI to edit DAGs and commit to a local git repo. 
+
+As Airflow is running in a container, this repo would of course be lost if the container were to restart, and running more than one container would lead to data inconsistency. Long-term, I'd rather see some sort of strategy where DAGs are maintained in an external GitHub or Code Commit repo and a cron job within the container periodically copies them into the DAG folder.
+
 ## Known Issues
 
 ### Bad Characters in Postgres Password
