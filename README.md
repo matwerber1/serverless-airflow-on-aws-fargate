@@ -11,21 +11,21 @@ https://towardsdatascience.com/how-to-deploy-apache-airflow-with-celery-on-aws-c
 
 I don't have everything working yet...
 
-# Help wanted
-
-I am brand new to Airflow. My first task is just to the containers running... after that, I need to learn how to configure Airflow and get the container tasks talking to one another. Help is welcome :)
-
 # Status
 
-1. **Webserver** task running and can connect via Fargate IP and ALB
-2. **Scheduler** task running and working (the /health endpoint shows scheduler and metadata are `healthy`)
-3. **Redis** task running, not sure its properly configured... guessing I need to map it to a DNS name matching my env var config
-4. **Flower** - container dies :(
-5. **Worker** - container dies :(
+1. The Aurora Postgres database and Airflow ECS Fargate tasks (webserver, scheduler, flower, redis, worker) are all running.
+
+2. The webserver claims that the scheduler is healthy. 
+
+3. The Fargate worker task appears as a `worker` on the Flower dashboard. 
+
+Despite the above, nothing seems to happen / trigger when I try to run a test DAG.
+
+Need to investigate...
 
 ## TODO List
 
-1. Add password for Redis
+1. Generate Redis and Postgres passwords that do not cause errors (see **Lessons Learned** and **Known Issues**)
 2. Add security groups with least privileges to each ECS service
 3. Add IAM roles with least privileges to each ECS task definition (or remove the task role)
 4. Generate a random fernet key rather than hard-coding into code (probably a custom Lambda resource to save in Secrets Manager?)
@@ -33,15 +33,6 @@ I am brand new to Airflow. My first task is just to the containers running... af
 6. Add an auto-scaling mechanism for the worker task (not sure what metric to measure...)
 7. Add an auto-scaling mechanism for the webserver task (maybe for large deployments)
 8. Maybe use AWS ElastiCache for Redis, instead of a Redis container on Fargate (not sure if needed)
-
-## Useful commands
-
- * `npm run build`   compile typescript to js
- * `npm run watch`   watch for changes and compile
- * `npm run test`    perform the jest unit tests
- * `cdk deploy`      deploy this stack to your default AWS account/region
- * `cdk diff`        compare deployed stack with current state
- * `cdk synth`       emits the synthesized CloudFormation template
 
 # Lessons Learned
 
@@ -78,3 +69,14 @@ File "/usr/local/lib/python3.7/urllib/parse.py", line 169, in port
   port = int(port, 10)
 ValueError: invalid literal for int() with base 10: 'k'
 ```
+
+## Useful commands
+
+This is generic info about the CDK CLI: 
+
+ * `npm run build`   compile typescript to js
+ * `npm run watch`   watch for changes and compile
+ * `npm run test`    perform the jest unit tests
+ * `cdk deploy`      deploy this stack to your default AWS account/region
+ * `cdk diff`        compare deployed stack with current state
+ * `cdk synth`       emits the synthesized CloudFormation template
