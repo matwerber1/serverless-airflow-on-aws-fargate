@@ -44,7 +44,6 @@ This project uses the AWS Cloud Development Kit (AWS CDK). Steps to deploy are:
 ## TODO List
 
 1. Learn how to use Airflow :)
-1. Generate Redis and Postgres passwords that do not cause errors (see **Known Issues**)
 2. Add security groups with least privileges to each ECS service
 3. Add IAM roles with least privileges to each ECS task definition (or remove the task role)
 4. Generate a random fernet key rather than hard-coding into code (probably a custom Lambda resource to save in Secrets Manager?)

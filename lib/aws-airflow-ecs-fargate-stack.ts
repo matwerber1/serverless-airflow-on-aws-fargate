@@ -58,14 +58,18 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
     //--------------------------------------------------------------------------
     // SECRETS
     //--------------------------------------------------------------------------
-    //TODO - add restrictions to avoid invalid chars
     const databasePasswordSecret = new secretsmanager.Secret(this, 'AirflowDatabasePassword', {
-      secretName: "airflow/postgres/password"
+      secretName: "airflow/postgres/password",
+      generateSecretString: {
+        excludeCharacters: '!@#$%^&*()-=+[]{};",.<>/?'
+      }
     });
 
-     //TODO - add restrictions to avoid invalid chars (redis failed to launch for certain chars)
     const redisPasswordSecret = new secretsmanager.Secret(this, 'RedisPassword', {
-      secretName: "airflow/redis/password"
+      secretName: "airflow/redis/password",
+      generateSecretString: {
+        excludeCharacters: '!@#$%^&*()-=+[]{};",.<>/?'
+      }
     });
 
     //--------------------------------------------------------------------------
