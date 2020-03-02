@@ -11,6 +11,12 @@ https://towardsdatascience.com/how-to-deploy-apache-airflow-with-celery-on-aws-c
 
 I don't have everything working yet...
 
+# Disclaimer!
+
+I'm new to Airflow and this project is a learning experience.
+
+My current goal is "just get it working", so production considerations (security, scaling, best practices, etc.) have not been addressed.
+
 # Status
 
 Just got everything finally working. I ran a DAG and it was successfully passed to and executed by the worker container :)
