@@ -13,19 +13,12 @@ I don't have everything working yet...
 
 # Status
 
-1. The Aurora Postgres database and Airflow ECS Fargate tasks (webserver, scheduler, flower, redis, worker) are all running.
-
-2. The webserver claims that the scheduler is healthy. 
-
-3. The Fargate worker task appears as a `worker` on the Flower dashboard. 
-
-Despite the above, nothing seems to happen / trigger when I try to run a test DAG.
-
-Need to investigate...
+Just got everything finally working. I ran a DAG and it was successfully passed to and executed by the worker container :)
 
 ## TODO List
 
-1. Generate Redis and Postgres passwords that do not cause errors (see **Lessons Learned** and **Known Issues**)
+1. Learn how to use Airflow :)
+1. Generate Redis and Postgres passwords that do not cause errors (see **Known Issues**)
 2. Add security groups with least privileges to each ECS service
 3. Add IAM roles with least privileges to each ECS task definition (or remove the task role)
 4. Generate a random fernet key rather than hard-coding into code (probably a custom Lambda resource to save in Secrets Manager?)
@@ -34,7 +27,7 @@ Need to investigate...
 7. Add an auto-scaling mechanism for the webserver task (maybe for large deployments)
 8. Maybe use AWS ElastiCache for Redis, instead of a Redis container on Fargate (not sure if needed)
 
-# Lessons Learned
+# Known Issues
 
 ## Bad Characters in Postgres Password
 
@@ -69,6 +62,16 @@ File "/usr/local/lib/python3.7/urllib/parse.py", line 169, in port
   port = int(port, 10)
 ValueError: invalid literal for int() with base 10: 'k'
 ```
+
+If you use this CDK project as-is, there's a good chance your random passwords will also create problems. If you find that your flower or worker containers seem to be having problems starting, the manual workaround for now is: 
+
+1. Manually change the Aurora Postgres master password to be alphanumeric
+2. Within AWS Secrets Manager:
+  1. Change the `/airflow/postgres/password` secret to match your new Aurora password
+  2. Change the `airflor/redis/password` secret to an alphanumeric password
+3. Wait for things to (hopefully) start working, and/or kill the running service tasks in ECS and let ECS start up new ones
+
+I say "alphanumeric" above because I'm not yet sure which character(s) create problems. 
 
 ## Useful commands
 
