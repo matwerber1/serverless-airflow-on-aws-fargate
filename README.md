@@ -4,12 +4,8 @@ This project provides a CDK script to get you up and running with Apache Airflow
 
 The majority of the infrastructure runs in Fargate containers on Amazon ECS. Amazon Aurora for Postgres provides persistent storage. 
 
-This project was almost entirely based on the awesome article by Axel Furlan, below: 
+This project was based on the awesome article by Axel Furlan, below: 
 https://towardsdatascience.com/how-to-deploy-apache-airflow-with-celery-on-aws-ce2518dbf631
-
-## Work in process
-
-I don't have everything working yet...
 
 ## Disclaimer
 
