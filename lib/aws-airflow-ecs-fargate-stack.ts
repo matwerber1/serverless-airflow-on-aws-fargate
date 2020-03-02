@@ -41,6 +41,9 @@ const CFG = {
     redisServiceName: 'redis',
     webserverServiceName: 'webserver',
     flowerServiceName: 'flower'
+  },
+  redis: {
+    port: '6379'
   }
 };
 
@@ -133,6 +136,7 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       POSTGRES_USER: CFG.db.masterUsername,
       AIRFLOW__CORE__REMOTE_BASE_LOG_FOLDER: s3_log_path,
       REDIS_HOST: redis_host,
+      REDIS_PORT: CFG.redis.port, 
       // Need to specify a key that is consistent across all airflow containers, otherwise they can't talk to one another: 
       FERNET_KEY: 'CQInk_dg4xsDrB-s2pvAt81cbddUNffTXqnGoRlPb5c='    // This needs to be migrated to an automated, secure way of generating a key
     };
@@ -163,7 +167,7 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       memoryLimitMiB: 1024,
       executionRole: taskExecutionRole
     });
-
+ 
     webserverTaskDefinition.addContainer('DefaultContainer', {
       image: ecs.ContainerImage.fromRegistry(airflowImage.imageUri),
       command: ['webserver'],
@@ -254,7 +258,7 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
     //--------------------------------------------------------------------------
     // TASK DEFINITION - WORKER
     //--------------------------------------------------------------------------
-    /*
+    
     const workerTaskDefinition = new ecs.FargateTaskDefinition(this, 'workerTaskDefinition', {
       family: 'airflow_worker',
       cpu: 1024,
@@ -266,11 +270,25 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       image: ecs.ContainerImage.fromRegistry(airflowImage.imageUri),
       command: ['worker'],
       logging: new ecs.AwsLogDriver({ streamPrefix: "airflow-worker", logRetention: 365 }),
-      environment: taskEnvironmentVars,
-      secrets: taskSecrets
+      environment: {
+        POSTGRES_DB: CFG.db.databaseName,
+        POSTGRES_HOST: aurora.attrEndpointAddress,
+        POSTGRES_PORT: aurora.attrEndpointPort,
+        POSTGRES_USER: CFG.db.masterUsername,
+        AIRFLOW__CORE__REMOTE_BASE_LOG_FOLDER: s3_log_path,
+        REDIS_HOST: redis_host,
+        REDIS_PORT: CFG.redis.port, 
+        ALLOW_EMPTY_PASSWORD: 'yes',
+        // Need to specify a key that is consistent across all airflow containers, otherwise they can't talk to one another: 
+        FERNET_KEY: 'CQInk_dg4xsDrB-s2pvAt81cbddUNffTXqnGoRlPb5c='    // This needs to be migrated to an automated, secure way of generating a key
+      },
+      secrets: {
+        POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(databasePasswordSecret),
+        //REDIS_PASSWORD: ecs.Secret.fromSecretsManager(redisPasswordSecret)
+      }
     })
     .addPortMappings({ containerPort: 8793 });;
-    
+  
     const workerService = new ecs.FargateService(this, 'workerService', {
       serviceName: 'worker',
       cluster: ecsCluster,
@@ -279,7 +297,7 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       securityGroup: ecsTaskSecurityGroup,
       assignPublicIp: false
     });
-    */
+
     //--------------------------------------------------------------------------
     // TASK DEFINITION - REDIS
     //--------------------------------------------------------------------------
@@ -294,8 +312,21 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
     redisTaskDefinition.addContainer('DefaultContainer', {
       image: ecs.ContainerImage.fromRegistry('bitnami/redis:5.0.7'),
       logging: new ecs.AwsLogDriver({ streamPrefix: "airflow-redis", logRetention: 365 }),
-      environment: taskEnvironmentVars,
-      secrets: taskSecrets
+      environment: {
+        POSTGRES_DB: CFG.db.databaseName,
+        POSTGRES_HOST: aurora.attrEndpointAddress,
+        POSTGRES_PORT: aurora.attrEndpointPort,
+        POSTGRES_USER: CFG.db.masterUsername,
+        AIRFLOW__CORE__REMOTE_BASE_LOG_FOLDER: s3_log_path,
+        REDIS_HOST: redis_host,
+        REDIS_PORT: CFG.redis.port, 
+        // Need to specify a key that is consistent across all airflow containers, otherwise they can't talk to one another: 
+        FERNET_KEY: 'CQInk_dg4xsDrB-s2pvAt81cbddUNffTXqnGoRlPb5c='    // This needs to be migrated to an automated, secure way of generating a key
+      },
+      secrets: {
+        POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(databasePasswordSecret),
+        //REDIS_PASSWORD: ecs.Secret.fromSecretsManager(redisPasswordSecret)
+      }
     })
       .addPortMappings({ containerPort: 6379 });;
     
@@ -319,7 +350,7 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
     //--------------------------------------------------------------------------
     // Based on guidance in: https://github.com/puckel/docker-airflow/blob/master/docker-compose-CeleryExecutor.yml
     // We need to set up certain containers before others: 
-    webserverService.node.addDependency(redisService);
+    //webserverService.node.addDependency(redisService);
     //flowerService.node.addDependency(redisService);
     //schedulerService.node.addDependency(webserverService);
     //workerService.node.addDependency(schedulerService);
