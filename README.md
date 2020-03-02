@@ -17,11 +17,21 @@ My current goal is "just get it working", so production considerations (security
 
 Just got everything finally working. I ran a DAG and it was successfully passed to and executed by the worker container :)
 
+## Deployment
+
+This project uses the AWS Cloud Development Kit (AWS CDK). Steps to deploy are: 
+
+1. Clone this repo
+2. Open `lib/aws-airflow-ecs-fargate-stack.ts` and edit the configuration (`CFG` object) at the top of the document; this includes things like specifying which pre-existing VPC and subnets you'd like to use. 
+3. Run `npm run build` to synthesize a local CloudFormation stack from your CDK template
+4. Run `cdk deploy` to deploy your stack to AWS CloudFormation
+5. If local changes are made, repeat steps 3 and 4 to build and push them to AWS. 
+
 ## Architecture
 
-1. This project runs the key components (webserver, scheduler, worker, and flower) of Apache Airflow, as well as an instance of Redis, as docker containers on AWS. Each container running as a separate Amazon ECS task with AWS Fargate.
+1. Key Apache Airflow components (webserver, scheduler, worker, and flower) are run as docker containers on Amazon ECS with AWS Fargate. 
 
-2. Amazon ECS is a container orchestration service, and AWS Fargate allows you to run your Docker containers serverlessly (sort of like a long-running AWS Lambda function).
+2. A single Redis instance is also run as a container on ECS + Fargate and acts as the message queue for our Airflow worker task(s). 
 
 3. Persistent storage for Apache Airflow is provided by an instance of Amazon Aurora Serverless for Postgres. 
 
