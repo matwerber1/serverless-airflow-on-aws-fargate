@@ -1,4 +1,4 @@
-# Apache Airflow on AWS ECS (Fargate) and Aurora Postgres
+# Serverless Apache Airflow on AWS
 
 This project provides a CDK script to get you up and running with Apache Airflow on a completely **serverless** AWS infrastructure. No EC2s to manage :)
 
