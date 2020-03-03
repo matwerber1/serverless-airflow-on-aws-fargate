@@ -9,3 +9,6 @@ cdk.out
 
 # Local tests to exclude
 local-test/
+
+.DS_Store
+.vscode

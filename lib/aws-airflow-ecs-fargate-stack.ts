@@ -5,18 +5,15 @@ import ec2 = require("@aws-cdk/aws-ec2");
 import ecs = require("@aws-cdk/aws-ecs");
 import s3 = require("@aws-cdk/aws-s3");
 import iam = require("@aws-cdk/aws-iam");
-import elbv2 = require('@aws-cdk/aws-elasticloadbalancingv2');
+import lambda = require("@aws-cdk/aws-lambda");
 import { DockerImageAsset } from '@aws-cdk/aws-ecr-assets';
 import servicediscovery = require('@aws-cdk/aws-servicediscovery');
-import { RotationSchedule } from '@aws-cdk/aws-secretsmanager';
-var fs = require('fs');
-var path = require('path');
+import cloudformation = require('@aws-cdk/aws-cloudformation');
+import fs = require('fs');
+import path = require('path');
+import { Duration } from '@aws-cdk/core';
 
-// Various configuration parameters; I'm not yet familiar enough with Airflow or
-// the puckel/docker-airflow image to know which of these can be changed...
-// Of course, you can definitely edit your subnet / VPC information. I used
-// existing VPCs/subnets when creating this, rather than deploying new ones
-// in the CDK. Eventually, maybe I'll remove these when everything is working. 
+// YOUR CONFIGURATION PARAMETERS:
 const CFG = {
   db: {
     databaseName: 'airflow',
@@ -30,7 +27,8 @@ const CFG = {
     maxCapacity: 8,
     SecondsUntilAutoPause: 3600,
     subnetIds: ['subnet-0cc5bd19c2c1829aa', 'subnet-02b4e00939e9f33bc'], // list of pre-existing subnet IDs
-    vpcSecurityGroupIds: ['sg-00e88c6dc027cc7ce']
+    vpcSecurityGroupIds: ['sg-00e88c6dc027cc7ce'],
+    passwordSecretName: "airflow/postgres/password"
   },
   ecs: {
     vpcId: 'vpc-23d0fe58',
@@ -43,10 +41,11 @@ const CFG = {
     flowerServiceName: 'flower'
   },
   redis: {
-    port: '6379'
+    port: '6379',
+    passwordSecretName: "airflow/redis/password"
   },
   airflow: {
-    fernetKey: 'CQInk_dg4xsDrB-s2pvAt81cbddUNffTXqnGoRlPb5c=',   // need to replace this with a randomly-generated key somehow...
+    fernetKeySecretName: "airflow/fernetKey",
     loadExamples: 'n'
   }
 };  
@@ -58,27 +57,92 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
     //--------------------------------------------------------------------------
     // SECRETS
     //--------------------------------------------------------------------------
+    /*
+        Warning!
+
+        The secrets below are dynamically referenced by the Airflow containers
+        at runtime. If you make any changes to the secrets below, it may lead
+        to problems. 
+
+        If you change the database secret, it will automatically  propogate to
+        the Aurora database. This means that when a container next starts/restarts, 
+        its going to pull the wrong value from Secrets Manager. If this happens, 
+        you should manually change the Aurora password to match the value in the secret. 
+
+        If you change the Redis password, a similar issue. If this happens, you should
+        restart kill all of the airflow tasks. Once they restart, they will pick up the
+        new value. Since Redis runs in a Fargate container and uses the same env var, 
+        restarting the Redis task is all you need to do to update the password. 
+
+        Likewise, issues will arise when changing the Fernet key. All Airflow containers
+        need to use the same Fernet key in order to communicate with one-another. If you
+        change the fernet key, then kill all the running tasks to make sure they're all 
+        replaced with new tasks that pick up the new Fernet key.
+    */
     const databasePasswordSecret = new secretsmanager.Secret(this, 'AirflowDatabasePassword', {
-      secretName: "airflow/postgres/password",
+      secretName: CFG.db.passwordSecretName,
       generateSecretString: {
         excludeCharacters: '!@#$%^&*()-=+[]{};",.<>/?'
       }
     });
 
     const redisPasswordSecret = new secretsmanager.Secret(this, 'RedisPassword', {
-      secretName: "airflow/redis/password",
+      secretName: CFG.redis.passwordSecretName,
       generateSecretString: {
         excludeCharacters: '!@#$%^&*()-=+[]{};",.<>/?'
       }
+    });
+
+    // AWS CDK does not allow us to specify a value for a secret, it only let's 
+    // us randomly generate a value. So, we will create the secret with a random
+    // value below, and later we will deploy a custom CloudFormation resource
+    // which contains a Lambda that will generate a valid Fernet key and update
+    // this secret. 
+    const fernetKeySecret = new secretsmanager.Secret(this, 'FernetKey', {
+      secretName: CFG.airflow.fernetKeySecretName
+    });
+
+    //--------------------------------------------------------------------------
+    // AIRFLOW FERNET KEY GENERATOR
+    //--------------------------------------------------------------------------
+    /*  
+        This Lambda is used to set a proper Fernet key in AWS Secrets Manager
+        because the AWS CDK does not allow us to directly specify such a value
+        in the secretsmanager.Secret construct :(
+        
+        https://github.com/aws/aws-cdk/issues/5810
+    */
+    const fernetKeyFunction = new lambda.Function(this, 'FernetKeyFunction', {
+      runtime: lambda.Runtime.PYTHON_3_6,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, 'lambda/fernetKeyGenerator')), 
+      environment: {
+        SECRET_ARN: fernetKeySecret.secretArn,
+        SECRET_NAME: CFG.airflow.fernetKeySecretName
+      },
+      timeout: Duration.seconds(10)
+    });
+
+    // Generate IAM policy that allows putting a new value to the Fernet secret in Secrets Manager: 
+    const fernetSecretPolicyStatement = new iam.PolicyStatement(); 
+    fernetSecretPolicyStatement.addActions('secretsmanager:PutSecretValue');
+    fernetSecretPolicyStatement.addResources(fernetKeySecret.secretArn);
+
+    // Attach the fernet secret policy to our fernet key generator function: 
+    fernetKeyFunction.addToRolePolicy(fernetSecretPolicyStatement);
+
+    // This custom CloudFormation resource below will use the Lambda above to
+    // replace our Fernet key secret with a proper value, rather than the arbitrary
+    // string that Secrets Manager generated when we first created the secret: 
+    const fernetKeyResource = new cloudformation.CustomResource(this, 'fernetKeyResource', {
+      provider: cloudformation.CustomResourceProvider.lambda(fernetKeyFunction),
     });
 
     //--------------------------------------------------------------------------
     // AIRFLOW S3 BUCKET (for logging and storing DAGs)
     //--------------------------------------------------------------------------
     // S3 Bucket to which we will ship airflow logs: 
-    const airflowBucket = new s3.Bucket(this, 'airflowBucket', {
-      removalPolicy: cdk.RemovalPolicy.DESTROY
-    });
+    const airflowBucket = new s3.Bucket(this, 'airflowBucket', {});
     var s3_log_path = "s3://" + airflowBucket.bucketName + "/logs"
 
     //--------------------------------------------------------------------------
@@ -165,8 +229,6 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       command: ['webserver'],
       logging: new ecs.AwsLogDriver({ streamPrefix: "airflow-webserver", logRetention: 365 }),
       environment: {
-        // Need to specify a key that is consistent across all airflow containers, otherwise they can't talk to one another: 
-        FERNET_KEY: CFG.airflow.fernetKey,    // This needs to be migrated to an automated, secure way of generating a key
         LOAD_EX: CFG.airflow.loadExamples,
         POSTGRES_DB: CFG.db.databaseName,
         POSTGRES_HOST: aurora.attrEndpointAddress,
@@ -178,7 +240,8 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       },
       secrets: {
         POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(databasePasswordSecret),
-        REDIS_PASSWORD: ecs.Secret.fromSecretsManager(redisPasswordSecret)
+        REDIS_PASSWORD: ecs.Secret.fromSecretsManager(redisPasswordSecret),
+        FERNET_KEY: ecs.Secret.fromSecretsManager(fernetKeySecret)
       }
     })
       .addPortMappings({ containerPort: 8080 });
@@ -213,8 +276,6 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       command: ['scheduler'],
       logging: new ecs.AwsLogDriver({ streamPrefix: "airflow-scheduler", logRetention: 365 }),
       environment: {
-        // Need to specify a key that is consistent across all airflow containers, otherwise they can't talk to one another: 
-        FERNET_KEY: CFG.airflow.fernetKey,    // This needs to be migrated to an automated, secure way of generating a key
         LOAD_EX: CFG.airflow.loadExamples,
         POSTGRES_DB: CFG.db.databaseName,
         POSTGRES_HOST: aurora.attrEndpointAddress,
@@ -226,7 +287,8 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       },
       secrets: {
         POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(databasePasswordSecret),
-        REDIS_PASSWORD: ecs.Secret.fromSecretsManager(redisPasswordSecret)
+        REDIS_PASSWORD: ecs.Secret.fromSecretsManager(redisPasswordSecret),
+        FERNET_KEY: ecs.Secret.fromSecretsManager(fernetKeySecret)
       }
     });
     
@@ -300,8 +362,6 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       command: ['worker'],
       logging: new ecs.AwsLogDriver({ streamPrefix: "airflow-worker", logRetention: 365 }),
       environment: {
-        // Need to specify a key that is consistent across all airflow containers, otherwise they can't talk to one another: 
-        FERNET_KEY: CFG.airflow.fernetKey,    // This needs to be migrated to an automated, secure way of generating a key
         POSTGRES_DB: CFG.db.databaseName,
         POSTGRES_HOST: aurora.attrEndpointAddress,
         POSTGRES_PORT: aurora.attrEndpointPort,
@@ -312,7 +372,8 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       },
       secrets: {
         POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(databasePasswordSecret),
-        REDIS_PASSWORD: ecs.Secret.fromSecretsManager(redisPasswordSecret)
+        REDIS_PASSWORD: ecs.Secret.fromSecretsManager(redisPasswordSecret),
+        FERNET_KEY: ecs.Secret.fromSecretsManager(fernetKeySecret)
       }
     })
     .addPortMappings({ containerPort: 8793 });;
