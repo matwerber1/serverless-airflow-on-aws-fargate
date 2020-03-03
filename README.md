@@ -63,7 +63,7 @@ So, my approach was to instead:
 1. Create a Secrets Manager secret for the Fernet key with the CDK (which gives it a random string that is **not** a valid Fernet key)
 2. Create a custom CloudFormation resource in which a simple Python Lambda generates a Fernet key and overwrites the value in Secrets Manager
 
-When pip installs the Python `cryptography` package, there are certain components that compiled against the native OS. Because of this, I opted to include a package I compiled on Amazon Linux w/ Python version 3.6 in my project files, rather than simply including a `requirements.txt` and letting you do your own `pip install...`, since you'd also have to be using the proper Python and OS version. 
+The python `cryptography` package has a few components that are compiled specifically for the host's OS and Python version... meaning if you run `pip install` on an environment that doesn't match AWS Lambda's execution environment, you're going to get errors. For that reason, I've included the Python dependencies in this repository to save you time. If you do want to compile your own, just be sure to run on an Amazon Linux environment (Docker, EC2, Cloud9, etc.) and use a Python version that matches the version you've configured for your Lambda.
 
 There's probably an easier way to manage this dependency... for example, the AWS SAM CLI builds requirements.txt for you using a local Amazon Linux container, and I imagine there'd be some way to mimick that functionality with CDK. But at least today (Feb 2020), CDK does not auto-build depedencies like the SAM CLI :(
 
