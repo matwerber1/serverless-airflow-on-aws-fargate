@@ -1,8 +1,6 @@
 # Apache Airflow on AWS ECS (Fargate) and Aurora Postgres
 
-This project provides a CDK script to get you up and running with Apache Airflow.
-
-The majority of the infrastructure runs in Fargate containers on Amazon ECS. Amazon Aurora for Postgres provides persistent storage. 
+This project provides a CDK script to get you up and running with Apache Airflow on a completely **serverless** AWS infrastructure. No EC2s to manage :)
 
 This project was based on the awesome article by Axel Furlan, below: 
 https://towardsdatascience.com/how-to-deploy-apache-airflow-with-celery-on-aws-ce2518dbf631
