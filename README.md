@@ -65,11 +65,11 @@ So, my approach was to instead:
 
 The python `cryptography` package has a few components that are compiled specifically for the host's OS and Python version... meaning if you run `pip install` on an environment that doesn't match AWS Lambda's execution environment, you're going to get errors. For that reason, I've included the Python dependencies in this repository to save you time. If you do want to compile your own, just be sure to run on an Amazon Linux environment (Docker, EC2, Cloud9, etc.) and use a Python version that matches the version you've configured for your Lambda.
 
-There's probably an easier way to manage this dependency... for example, the AWS SAM CLI builds requirements.txt for you using a local Amazon Linux container, and I imagine there'd be some way to mimick that functionality with CDK. But at least today (Feb 2020), CDK does not auto-build depedencies like the SAM CLI :(
+There's probably an easier way to do this, but this is what I've settled on for now. 
 
 ### Web UI to edit DAGs
 
-Just to make my early learning a bit easier, I included an [airflow-code-editor](https://github.com/andreax79/airflow-code-editor) plugin, which gives a web UI to edit DAGs and commit to a local git repo. 
+Just to make my early learning a bit easier, I included an [airflow-code-editor](https://github.com/andreax79/airflow-code-editor) plugin, which gives a web UI to edit DAGs and commit to a local git repo. You will see this UI when you connect to the `webserver.airflow:8080` service. 
 
 As Airflow is running in a container, this repo would of course be lost if the container were to restart, and running more than one container would lead to data inconsistency. Long-term, I'd rather see some sort of strategy where DAGs are maintained in an external GitHub or Code Commit repo and a cron job within the container periodically copies them into the DAG folder.
 
