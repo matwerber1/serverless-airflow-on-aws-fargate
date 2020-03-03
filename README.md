@@ -43,16 +43,30 @@ This project uses the AWS Cloud Development Kit (AWS CDK). Steps to deploy are:
 
 ## TODO List
 
-1. Learn how to use Airflow :)
-2. Add security groups with least privileges to each ECS service
-3. Add IAM roles with least privileges to each ECS task definition (or remove the task role)
-4. Generate a random fernet key rather than hard-coding into code (probably a custom Lambda resource to save in Secrets Manager?)
-5. Add a cron job to sync DAG scripts from S3 into the webserver container (see step six in this blog: https://stlong0521.github.io/20161023%20-%20Airflow.html)
-6. Add an auto-scaling mechanism for the worker task (not sure what metric to measure...)
-7. Add an auto-scaling mechanism for the webserver task (maybe for large deployments)
-8. Maybe use AWS ElastiCache for Redis, instead of a Redis container on Fargate (not sure if needed)
+1. Add security groups with least privileges to each ECS service
+2. Add IAM roles with least privileges to each ECS task definition (or remove the task role)
+3. Add a cron job to sync DAG scripts from S3 into the webserver container (see step six in this blog: https://stlong0521.github.io/20161023%20-%20Airflow.html)
+4. Add an auto-scaling mechanism for the worker task (not sure what metric to measure...)
+5. Add an auto-scaling mechanism for the webserver task (maybe for large deployments)
+6. Maybe use AWS ElastiCache for Redis, instead of a Redis container on Fargate (not sure if needed)
 
 ## Other Topics
+
+### Fernet Key Lambda Generator
+
+In order for the Airflow tasks to successfully communicate, they need to use the same Fernet key, which we assign via an environment variable. 
+
+Existing docs typically suggest running a local Python command to generate a key and then copy-pasting it into code. I instead chose to automate this process. 
+
+Normally, I would just find a package to generate a Fernet key within the CDK script, store it in AWS Secrets Manager, and then add that secret as an env var in the ECS task definition. Unfortunately, the CDK Secrets construct does not allow you to specify your own secret value... the construct will always generate a random string for you (see https://github.com/aws/aws-cdk/issues/5810).
+
+So, my approach was to instead: 
+1. Create a Secrets Manager secret for the Fernet key with the CDK (which gives it a random string that is **not** a valid Fernet key)
+2. Create a custom CloudFormation resource in which a simple Python Lambda generates a Fernet key and overwrites the value in Secrets Manager
+
+When pip installs the Python `cryptography` package, there are certain components that compiled against the native OS. Because of this, I opted to include a package I compiled on Amazon Linux w/ Python version 3.6 in my project files, rather than simply including a `requirements.txt` and letting you do your own `pip install...`, since you'd also have to be using the proper Python and OS version. 
+
+There's probably an easier way to manage this dependency... for example, the AWS SAM CLI builds requirements.txt for you using a local Amazon Linux container, and I imagine there'd be some way to mimick that functionality with CDK. But at least today (Feb 2020), CDK does not auto-build depedencies like the SAM CLI :(
 
 ### Web UI to edit DAGs
 
