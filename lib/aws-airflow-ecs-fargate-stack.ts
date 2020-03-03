@@ -12,6 +12,7 @@ import cloudformation = require('@aws-cdk/aws-cloudformation');
 import fs = require('fs');
 import path = require('path');
 import { Duration } from '@aws-cdk/core';
+import { ServicePrincipal } from '@aws-cdk/aws-iam';
 
 // YOUR CONFIGURATION PARAMETERS:
 const CFG = {
@@ -158,7 +159,7 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
     });
     
     //--------------------------------------------------------------------------
-    // IAM & SECURITY GROUPS
+    // IMPORTED IAM & SECURITY GROUPS
     //--------------------------------------------------------------------------
     const taskExecutionRoleArn = `arn:aws:iam::${props?.env?.account}:role/ecsTaskExecutionRole`;
     const taskExecutionRole = iam.Role.fromRoleArn(this, 'taskExecutionRole', taskExecutionRoleArn);
@@ -215,13 +216,23 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
     });
 
     //--------------------------------------------------------------------------
+    // ECS TASK ROLE - AIRFLOW ACCESS TO S3
+    //--------------------------------------------------------------------------
+    const airflowTaskRole = new iam.Role(this, 'airflowTaskRole', {
+      description: 'Role assumed by Airflow ECS services to access S3',
+      assumedBy: new ServicePrincipal('ecs-tasks.amazonaws.com')
+    });
+    airflowBucket.grantReadWrite(airflowTaskRole);
+
+    //--------------------------------------------------------------------------
     // ECS SERVICE - AIRFLOW WEBSERVER
     //--------------------------------------------------------------------------
     const webserverTaskDefinition = new ecs.FargateTaskDefinition(this, 'webserverTaskDefinition', {
       family: 'airflow_webserver',
       cpu: 512,
       memoryLimitMiB: 1024,
-      executionRole: taskExecutionRole
+      executionRole: taskExecutionRole,
+      taskRole: airflowTaskRole
     });
  
     webserverTaskDefinition.addContainer('DefaultContainer', {
@@ -268,7 +279,8 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       family: 'airflow_scheduler',
       cpu: 512,
       memoryLimitMiB: 2048,
-      executionRole: taskExecutionRole
+      executionRole: taskExecutionRole,
+      taskRole: airflowTaskRole
     });
 
     schedulerTaskDefinition.addContainer('DefaultContainer', {
@@ -308,7 +320,8 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       family: 'airflow_flower',
       cpu: 256,
       memoryLimitMiB: 512,
-      executionRole: taskExecutionRole
+      executionRole: taskExecutionRole,
+      taskRole: airflowTaskRole
     });
 
     flowerTaskDefinition.addContainer('DefaultContainer', {
@@ -354,7 +367,8 @@ export class AwsAirflowEcsFargateStack extends cdk.Stack {
       family: 'airflow_worker',
       cpu: 1024,
       memoryLimitMiB: 3072,
-      executionRole: taskExecutionRole
+      executionRole: taskExecutionRole,
+      taskRole: airflowTaskRole
     });
 
     workerTaskDefinition.addContainer('DefaultContainer', {
