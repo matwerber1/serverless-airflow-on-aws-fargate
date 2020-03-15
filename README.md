@@ -2,7 +2,8 @@
 
 This project provides a CDK script to get you up and running with Apache Airflow on a completely **serverless** AWS infrastructure. No EC2s to manage :)
 
-This project was based on the awesome article by Axel Furlan, below: 
+This project was based on this awesome article by Axel Furlan: 
+
 https://towardsdatascience.com/how-to-deploy-apache-airflow-with-celery-on-aws-ce2518dbf631
 
 ## Disclaimer
