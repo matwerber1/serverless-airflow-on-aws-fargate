@@ -1,3 +1,11 @@
+# UPDATE!
+
+On November 24th, 2020, AWS announced Amazon Managed Apache Airflow (AMAA):
+
+* https://aws.amazon.com/about-aws/whats-new/2020/11/introducing-amazon-managed-workflows-for-apache-airflow-mwaa/
+
+The new AMAA is likely a better strategy that trying to set up and run airflow yourself :)
+
 # Serverless Apache Airflow on AWS
 
 This project provides a CDK script to get you up and running with Apache Airflow on a completely **serverless** AWS infrastructure. No EC2s to manage :)
